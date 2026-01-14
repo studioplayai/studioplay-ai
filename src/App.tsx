@@ -786,23 +786,23 @@ try {
   };
 
   const handleBuy = (planId: string) => {
-  const urlByPlan: Record<string, string> = {
-    basic: LS_BASIC,
-    pro: LS_PRO,
-    promax: LS_PRO_MAX,
+  const urlByPlan: Record<string, string | undefined> = {
+    basic: import.meta.env.VITE_LEMON_CHECKOUT_BASIC_URL,
+    pro: import.meta.env.VITE_LEMON_CHECKOUT_PRO_URL,
+    promax: import.meta.env.VITE_LEMON_CHECKOUT_PROMAX_URL,
   };
 
   const url = urlByPlan[planId];
-  if (url) {
-    window.location.href = url;
+
+  if (!url) {
+    alert(`Missing Lemon checkout URL for plan: ${planId}`);
     return;
   }
 
-  // fallback (אם אי פעם יתווסף plan חדש)
-  setCheckoutPlanId(planId);
-  setShowPricingModal(false);
-  setShowCheckout(true);
+  window.location.href = url;
 };
+
+
 
 
   const handlePaymentCompleted = async (planId: string, amount: number, credits: number) => {
