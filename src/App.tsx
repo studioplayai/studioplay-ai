@@ -606,6 +606,25 @@ return () => {
   try {
   if (session?.user) {
   // 🔥 נכנסים לאפליקציה מיד
+  try {
+  await supabase
+    .from('profiles')
+    .upsert(
+      {
+        id: session.user.id,
+        email: session.user.email,
+        name:
+          (session.user.user_metadata?.full_name as string) ||
+          (session.user.user_metadata?.name as string) ||
+          '',
+        last_seen: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+} catch (e) {
+  console.warn("profiles upsert failed", e);
+}
+
   setIsStarted(true);
 
   const email = session.user.email || "";

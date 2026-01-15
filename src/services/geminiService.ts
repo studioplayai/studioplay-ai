@@ -314,7 +314,7 @@ if (mode === ToolMode.SOCIAL_POST) {
     model: modelName,
     contents: {
       parts: [
-        { text: v7Prompt || imagePrompt },
+        { text: [v7Prompt, imagePrompt].filter(Boolean).join("\n\n") },
         { inlineData: { mimeType, data: imageBytes } },
       ],
     },

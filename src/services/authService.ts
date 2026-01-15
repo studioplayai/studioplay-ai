@@ -2,6 +2,21 @@
 import { User } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
+const normalizePlan = (p: any): User["plan"] => {
+  const v = String(p || "").toLowerCase();
+  if (
+    v === "agency" ||
+    v === "free" ||
+    v === "pro" ||
+    v === "basic" ||
+    v === "max"
+  ) {
+    return v as User["plan"];
+  }
+  return "free";
+};
+
+
 const CURRENT_USER_KEY = 'studioplay_current_user_v1';
 export const ADMIN_EMAIL = 'admin@studioplay.ai';
 
@@ -106,12 +121,13 @@ export const login = async (email: string, name?: string): Promise<User> => {
     if (isSupabaseConfigured()) {
         try {
             const { data: existingUser, error: fetchError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('email', email)
-                .single();
+  .from('profiles')
+  .select('*')
+  .eq('email', email)
+  .maybeSingle(); // ✅
 
-            if (!existingUser || fetchError) {
+
+            if (fetchError || !existingUser) {
                 user = {
                     id: crypto.randomUUID(),
                     email,
@@ -129,7 +145,7 @@ export const login = async (email: string, name?: string): Promise<User> => {
                     name: existingUser.name,
                     role: existingUser.role,
                     credits: existingUser.credits,
-                    plan: existingUser.plan,
+                    plan: normalizePlan(existingUser.plan),
                     joinedAt: new Date(existingUser.joined_at).getTime(),
                     lastSeen: existingUser.last_seen ? new Date(existingUser.last_seen).getTime() : undefined,
                     currentActivity: existingUser.current_activity
@@ -152,7 +168,7 @@ const createLocalUser = (email: string, name: string, isAdmin: boolean): User =>
     name,
     role: isAdmin ? 'admin' : 'user',
     credits: isAdmin ? 999999 : 3,
-    plan: isAdmin ? 'agency' : 'free',
+    plan: normalizePlan(isAdmin ? 'agency' : 'free'),
     joinedAt: Date.now()
 });
 
@@ -210,13 +226,15 @@ export const updateUserProfile = async (userId: string, name: string): Promise<U
 
     try {
         const { data, error } = await supabase
-            .from('profiles')
-            .update({ name })
-            .eq('id', userId)
-            .select()
-            .single();
-        
-        if (error || !data) throw error;
+  .from('profiles')
+  .update({ name })
+  .eq('id', userId)
+  .select()
+  .maybeSingle(); // ✅
+
+if (error) throw error;
+if (!data) return null; // לא להפיל
+
         
         const updatedUser: User = {
             id: data.id,
@@ -258,13 +276,23 @@ export const updateUserCredits = async (userId: string, creditsToAdd: number, pl
         if (plan) updates.plan = plan;
 
         const { data, error } = await supabase
-            .from('profiles')
-            .update(updates)
-            .eq('id', userId)
-            .select()
-            .single();
-        
-        if (error || !data) throw error;
+  .from('profiles')
+  .update(updates)
+  .eq('id', userId)
+  .select()
+  .maybeSingle(); // ✅ במקום single
+
+if (error) throw error;
+
+// אם אין row (עדיין לא נוצר / RLS), לא להפיל את האפליקציה
+if (!data) {
+  // אפשר פשוט להחזיר את currentUser המקומי עם credits מעודכנים
+  const updated: User = { ...currentUser, credits: Math.max(0, newCredits), plan: normalizePlan(plan || currentUser.plan),
+ };
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+  return updated;
+}
+
 
         const updatedUser: User = {
             id: data.id,
