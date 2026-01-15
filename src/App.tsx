@@ -15,9 +15,6 @@ import { UserDashboard } from './components/UserDashboard';
 import { TRANSLATIONS } from './translations';
 
 // LocalStorage keys / plan ids (used in handleBuy)
-const LS_BASIC = 'basic';
-const LS_PRO = 'pro';
-const LS_PRO_MAX = 'promax';
 
 
 // Lazy loaded components
@@ -277,12 +274,15 @@ const getInitialState = (): AppState => ({
   generatedIdeas: null
 });
 
-const LandingPage: React.FC<{ onStart: () => void, language: AppLanguage, setLanguage: (lang: AppLanguage) => void, onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, onOpenPrivacy: () => void, onOpenRefund: () => void, onOpenTOS: () => void, onOpenAbout: () => void, onOpenContact: () => void }> = ({ onStart, language, setLanguage, onUpload, onOpenPrivacy, onOpenRefund, onOpenTOS, onOpenAbout, onOpenContact }) => {
+const LandingPage: React.FC<{
+     onStart: () => void,
+      language: AppLanguage,
+       setLanguage: (lang: AppLanguage) => void,
+        onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, 
+        onBuy: (planId: 'basic' | 'pro' | 'promax') => void,
+         onOpenPrivacy: () => void, onOpenRefund: () => void, onOpenTOS: () => void, onOpenAbout: () => void, onOpenContact: () => void }> = ({ onStart, language, setLanguage, onUpload, onBuy, onOpenPrivacy, onOpenRefund, onOpenTOS, onOpenAbout, onOpenContact }) => {
   const t = useTranslation(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const LS_BASIC   = "https://app.lemonsqueezy.com/share/726853";
-  const LS_PRO     = "https://YOUR-LEMON-DOMAIN/checkout/buy/YYYYYYYY";
-  const LS_PRO_MAX = "https://YOUR-LEMON-DOMAIN/checkout/buy/ZZZZZZZZ";
 
 
 
@@ -445,7 +445,8 @@ const LandingPage: React.FC<{ onStart: () => void, language: AppLanguage, setLan
                     subtitle={t('planProMaxSub')}
                     price="89.99"
                     features={[t('selectedImages'), 'נפח עבודה מקסימלי', 'תמיכה מועדפת', 'יצירת תוכן בקנה מידה גדול']}
-                    onSelect={() => (window.location.href = LS_PRO_MAX)}
+                    onSelect={() => onBuy('promax')}
+
                     buttonText={t('subscribe')}
                     lang={language}
                 />
@@ -455,7 +456,8 @@ const LandingPage: React.FC<{ onStart: () => void, language: AppLanguage, setLan
                     price="59.95"
                     isPopular
                     features={['80 קרדיטים חודשיים', 'יותר חופש ויצירתיות', 'אידיאלי ליוצרי תוכן ומשפיענים', 'עבודה שוטפת ללא מגבלות']}
-                    onSelect={() => (window.location.href = LS_PRO)}
+                    onSelect={() => onBuy('pro')}
+
                     buttonText={t('subscribe')}
                     lang={language}
                 />
@@ -464,7 +466,8 @@ const LandingPage: React.FC<{ onStart: () => void, language: AppLanguage, setLan
                     subtitle={t('planBasicSub')}
                     price="39.95"
                     features={['35 קרדיטים חודשיים', 'יצירת תמונות ועיצובים מקצועיים', 'גישה מלאה למערכת', 'מתאים למשתמשים מתחילים']}
-                    onSelect={() => (window.location.href = LS_BASIC)}
+                    onSelect={() => onBuy('basic')}
+
                     buttonText={t('subscribe')}
                     lang={language}
                 />
@@ -1519,6 +1522,7 @@ if (isBase64Image) {
           language={state.appLanguage} 
           setLanguage={(lang) => updateState({ appLanguage: lang })} 
           onUpload={handleImageReplace}
+          onBuy={handleBuy}
           onOpenPrivacy={() => setShowPrivacyPolicy(true)}
           onOpenRefund={() => setShowRefundPolicy(true)}
           onOpenTOS={() => setShowTOS(true)}
