@@ -1,22 +1,5 @@
-// api/lemon-webhook.ts
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "crypto";
-
-function timingSafeEqual(a: string, b: string) {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
-
-function verifySignature(rawBody: Buffer, secret: string, signatureHeader: string | null) {
-  if (!signatureHeader) return false;
-
-  // Some providers send "sha256=<hex>"
-  const sig = signatureHeader.startsWith("sha256=") ? signatureHeader.slice(7) : signatureHeader;
-
-  const digest = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  return timingSafeEqual(digest, sig);
-}
 
 const PLAN_CREDITS_MAP: Record<string, number> = {
   "basic plan": 35,
@@ -30,10 +13,32 @@ function creditsFromVariantName(variantName: string) {
   return key ? { planKey: key, credits: PLAN_CREDITS_MAP[key] } : null;
 }
 
+function timingSafeEqual(a: string, b: string) {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+function verifySignature(rawBody: Buffer, secret: string, signatureHeader?: string) {
+  if (!signatureHeader) return false;
+  const sig = signatureHeader.startsWith("sha256=") ? signatureHeader.slice(7) : signatureHeader;
+  const digest = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  return timingSafeEqual(digest, sig);
+}
+
+async function readRawBody(req: VercelRequest): Promise<Buffer> {
+  return await new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
 async function supabaseRequest(path: string, method: string, body?: any) {
   const url = process.env.SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
   const res = await fetch(`${url}${path}`, {
     method,
     headers: {
@@ -54,25 +59,29 @@ async function supabaseRequest(path: string, method: string, body?: any) {
   return { ok: res.ok, status: res.status, json, text };
 }
 
-export default async function handler(req: Request) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {if (req.method !== "POST") {
+  return res.status(200).send("Lemon webhook endpoint (POST only)");
+}
+
   if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+    return res.status(405).send("Method Not Allowed");
   }
 
   const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
-  if (!secret) return new Response("Missing LEMONSQUEEZY_WEBHOOK_SECRET", { status: 500 });
+  if (!secret) return res.status(500).send("Missing LEMONSQUEEZY_WEBHOOK_SECRET");
 
-  const rawBody = Buffer.from(await req.arrayBuffer());
-  const signature = req.headers.get("x-signature");
+  const rawBody = await readRawBody(req);
+  const signature = req.headers["x-signature"] as string | undefined;
 
-  const isValid = verifySignature(rawBody, secret, signature);
-  if (!isValid) return new Response("Invalid signature", { status: 401 });
+  if (!verifySignature(rawBody, secret, signature)) {
+    return res.status(401).send("Invalid signature");
+  }
 
   let payload: any;
   try {
     payload = JSON.parse(rawBody.toString("utf8"));
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return res.status(400).send("Invalid JSON");
   }
 
   const eventName =
@@ -83,10 +92,7 @@ export default async function handler(req: Request) {
 
   const allowed = new Set(["order_created", "subscription_created", "subscription_payment_success"]);
   if (!allowed.has(eventName)) {
-    return new Response(JSON.stringify({ ok: true, ignored: eventName }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(200).json({ ok: true, ignored: eventName });
   }
 
   const variantName =
@@ -98,10 +104,7 @@ export default async function handler(req: Request) {
   const planInfo = creditsFromVariantName(variantName);
   if (!planInfo) {
     console.log("Webhook: unknown variant name:", variantName);
-    return new Response(JSON.stringify({ ok: false, error: "Unknown variant", variantName }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(400).json({ ok: false, error: "Unknown variant", variantName });
   }
 
   const userId =
@@ -117,10 +120,7 @@ export default async function handler(req: Request) {
     null;
 
   if (!userId && !email) {
-    return new Response(JSON.stringify({ ok: false, error: "Missing user_id/email" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(400).json({ ok: false, error: "Missing user_id/email" });
   }
 
   console.log("LEMON EVENT:", eventName, "variant:", variantName, "add:", planInfo.credits, "userId:", userId, "email:", email);
@@ -131,10 +131,7 @@ export default async function handler(req: Request) {
 
   const get = await supabaseRequest(`/rest/v1/profiles?select=id,email,credits,plan&${filter}`, "GET");
   if (!get.ok || !Array.isArray(get.json) || get.json.length === 0) {
-    return new Response(JSON.stringify({ ok: false, error: "User not found in profiles", by: userId ? "id" : "email" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(404).json({ ok: false, error: "User not found in profiles", by: userId ? "id" : "email" });
   }
 
   const profile = get.json[0];
@@ -147,22 +144,16 @@ export default async function handler(req: Request) {
   });
 
   if (!patch.ok) {
-    return new Response(JSON.stringify({ ok: false, error: "Failed updating credits", details: patch.text }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(500).json({ ok: false, error: "Failed updating credits", details: patch.text });
   }
 
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      eventName,
-      variantName,
-      added: planInfo.credits,
-      before: currentCredits,
-      after: newCredits,
-      user: { id: profile.id, email: profile.email },
-    }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
+  return res.status(200).json({
+    ok: true,
+    eventName,
+    variantName,
+    added: planInfo.credits,
+    before: currentCredits,
+    after: newCredits,
+    user: { id: profile.id, email: profile.email },
+  });
 }
