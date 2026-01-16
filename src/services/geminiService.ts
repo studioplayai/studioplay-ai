@@ -285,7 +285,13 @@ const imageBytes = stripBase64Header(optimizedImage);
   let modelName = 'gemini-2.5-flash-image'; 
   const config: any = { imageConfig: { aspectRatio: '1:1' } };
   
-  if (enableDeepThinking && (mode === ToolMode.RECOLOR || mode === ToolMode.MOCKUP_GENERATOR)) {
+  if (
+  enableDeepThinking &&
+  (mode === ToolMode.RECOLOR ||
+    mode === ToolMode.MOCKUP_GENERATOR ||
+    mode === ToolMode.GENERATE_ANGLES)
+) {
+
     modelName = 'gemini-3-pro-image-preview';
     config.thinkingConfig = { thinkingBudget: 4000 };
   }
@@ -309,14 +315,27 @@ if (mode === ToolMode.SOCIAL_POST) {
     { inlineData: { mimeType, data: imageBytes } }
   ];
 
+  const finalPromptText = v7Prompt || imagePrompt;
+
+  console.log("🧠 PROMPT DEBUG", {
+  mode,
+  selectedOptionId,
+  usingV7Prompt: Boolean(v7Prompt),
+  promptSource: v7Prompt ? "v7PromptMap" : "legacyPrompt",
+  promptPreview: finalPromptText.slice(0, 400),
+  modelName,
+  aspectRatio: "1:1",
+});
+
  const imageResp = await retryWithBackoff(() =>
   ai.models.generateContent({
     model: modelName,
     contents: {
       parts: [
-        { text: [v7Prompt, imagePrompt].filter(Boolean).join("\n\n") },
-        { inlineData: { mimeType, data: imageBytes } },
-      ],
+  { text: finalPromptText },
+  { inlineData: { mimeType, data: imageBytes } },
+],
+
     },
     config: {
       imageConfig: { aspectRatio: "1:1" },
